@@ -27,6 +27,10 @@ const CONFIG = {
   adminJids: [],                        // e.g. ['9198xxxxxxxx@s.whatsapp.net'] — pinged on triage keywords
   welcomePacingMs: [1500, 4000],        // random delay range before welcoming, so it doesn't look botty
 
+  // ---- PAIRING (headless-friendly, no QR camera needed) ----
+  usePairingCode: true,                 // false → show QR in terminal instead
+  pairingNumber: '919353806151',        // country code + number, no + or spaces
+
   // ---- DOSING: FAIL-CLOSED ----
   // Left null on purpose. The bot REFUSES to calculate until you fill these in
   // from YOUR protocol / product, so nobody ever ships placeholder doses.
@@ -34,13 +38,12 @@ const CONFIG = {
   //   concentrationMgPerMl: injectable concentration (mg/ml) — null to hide ml output
   //   tabletStrengthMg: oral tablet strength (mg) — null to hide tablet output
   dosing: {
-    concentrationMgPerMl: 20,
-    tabletStrengthMg: 25 / 50 ,
-    mgPerKg: { wet: 8, pleural :10, dry: 10, ocular: 12, neuro: 12 },
+    concentrationMgPerMl: null,
+    tabletStrengthMg: null,
+    mgPerKg: { wet: null, dry: null, ocular: null, neuro: null },
   },
 };
-const USE_PAIRING_CODE = true;
-const PAIRING_NUMBER = '919353806151';
+
 const FORMS = ['wet', 'dry', 'ocular', 'neuro'];
 
 // ============================================================
@@ -215,24 +218,40 @@ async function handleCommand(sock, replyJid, senderJid, body) {
 // ============================================================
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-  const sock = makeWASocket({ auth: state });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
-  if (USE_PAIRING_CODE && !sock.authState.creds.registered) {
-  setTimeout(async () => {
-    const code = await sock.requestPairingCode(PAIRING_NUMBER);
-    console.log('Pairing code:', code?.match(/.{1,4}/g)?.join('-'));
-  }, 3000);
-  }
+  let pairingRequested = false;         // guard: request pairing code ONCE per start()
+
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
-    if (qr) qrcode.generate(qr, { small: true });
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+    // --- QR / Pairing ---
+    if (qr) {
+      if (CONFIG.usePairingCode && !pairingRequested && !sock.authState.creds.registered) {
+        pairingRequested = true;        // never request twice on the same socket
+        try {
+          const code = await sock.requestPairingCode(CONFIG.pairingNumber);
+          console.log('Pairing code:', code?.match(/.{1,4}/g)?.join('-'));
+          console.log('Enter it on your phone: WhatsApp → Linked Devices → Link a Device → Link with phone number instead');
+        } catch (err) {
+          console.error('Pairing code request failed:', err.message || err);
+          console.log('Retrying on next QR cycle…');
+          pairingRequested = false;     // allow retry on next QR event
+        }
+      } else if (!CONFIG.usePairingCode) {
+        qrcode.generate(qr, { small: true });
+      }
+    }
+
+    // --- Connected ---
     if (connection === 'open') console.log('✅ Connected as', sock.user?.id);
+
+    // --- Disconnected ---
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
       const loggedOut = code === DisconnectReason.loggedOut;
       console.log('Connection closed.', loggedOut ? 'Logged out — delete auth_info and re-scan.' : 'Reconnecting…');
-      if (!loggedOut) start();
+      if (!loggedOut) start();           // auto-reconnect (fresh pairingRequested flag)
     }
   });
 
