@@ -217,6 +217,12 @@ async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
   const sock = makeWASocket({ auth: state });
 
+  if (USE_PAIRING_CODE && !sock.authState.creds.registered) {
+  setTimeout(async () => {
+    const code = await sock.requestPairingCode(PAIRING_NUMBER);
+    console.log('Pairing code:', code?.match(/.{1,4}/g)?.join('-'));
+  }, 3000);
+  }
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
