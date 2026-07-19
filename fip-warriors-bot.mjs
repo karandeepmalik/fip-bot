@@ -34,12 +34,13 @@ const CONFIG = {
   //   concentrationMgPerMl: injectable concentration (mg/ml) — null to hide ml output
   //   tabletStrengthMg: oral tablet strength (mg) — null to hide tablet output
   dosing: {
-    concentrationMgPerMl: null,
-    tabletStrengthMg: null,
-    mgPerKg: { wet: null, dry: null, ocular: null, neuro: null },
+    concentrationMgPerMl: 20,
+    tabletStrengthMg: 25 / 50 ,
+    mgPerKg: { wet: 8, pleural :10, dry: 10, ocular: 12, neuro: 12 },
   },
 };
-
+const USE_PAIRING_CODE = true;
+const PAIRING_NUMBER = '919353806151';
 const FORMS = ['wet', 'dry', 'ocular', 'neuro'];
 
 // ============================================================
